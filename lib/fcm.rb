@@ -4,16 +4,14 @@ require "json"
 require "googleauth"
 
 class FCM
-  BASE_URI = "https://fcm.googleapis.com"
-  BASE_URI_V1 = "https://fcm.googleapis.com/v1/projects/"
+  BASE_URI_V1 = "https://iid.googleapis.com/v1/projects/"
   DEFAULT_TIMEOUT = 30
 
   GROUP_NOTIFICATION_BASE_URI = "https://android.googleapis.com"
   INSTANCE_ID_API = "https://iid.googleapis.com"
   TOPIC_REGEX = /[a-zA-Z0-9\-_.~%]+/
 
-  def initialize(api_key, json_key_path = "", project_name = "", client_options = {})
-    @api_key = api_key
+  def initialize(json_key_path, project_name, client_options = {})
     @client_options = client_options
     @json_key_path = json_key_path
     @project_name = project_name
@@ -43,7 +41,7 @@ class FCM
   #     }
   #   }
   # }
-  # fcm = FCM.new(api_key, json_key_path, project_name)
+  # fcm = FCM.new(json_key_path, project_name)
   # fcm.send_v1(
   #    { "token": "4sdsx",, "to" : "notification": {}.. }
   # )
@@ -51,10 +49,8 @@ class FCM
     return if @project_name.empty?
 
     post_body = { 'message': message }
-    extra_headers = {
-      'Authorization' => "Bearer #{jwt_token}"
-    }
-    for_uri(BASE_URI_V1, extra_headers) do |connection|
+
+    for_uri(BASE_URI_V1) do |connection|
       response = connection.post(
         "#{@project_name}/messages:send", post_body.to_json
       )
@@ -64,28 +60,6 @@ class FCM
 
   alias send_v1 send_notification_v1
 
-  # See https://developers.google.com/cloud-messaging/http for more details.
-  # { "notification": {
-  #  "title": "Portugal vs. Denmark",
-  #  "text": "5 to 1"
-  # },
-  # "to" : "bk3RNwTe3H0:CI2k_HHwgIpoDKCIZvvDMExUdFQ3P1..."
-  # }
-  # fcm = FCM.new("API_KEY")
-  # fcm.send(
-  #    ["4sdsx", "8sdsd"], # registration_ids
-  #    { "notification": { "title": "Portugal vs. Denmark", "text": "5 to 1" }, "to" : "bk3RNwTe3HdFQ3P1..." }
-  # )
-  def send_notification(registration_ids, options = {})
-    post_body = build_post_body(registration_ids, options)
-
-    for_uri(BASE_URI) do |connection|
-      response = connection.post("/fcm/send", post_body.to_json)
-      build_response(response, registration_ids)
-    end
-  end
-
-  alias send send_notification
 
   def create_notification_key(key_name, project_id, registration_ids = [])
     post_body = build_post_body(registration_ids, operation: "create",
@@ -226,7 +200,8 @@ class FCM
     ) do |faraday|
       faraday.adapter Faraday.default_adapter
       faraday.headers["Content-Type"] = "application/json"
-      faraday.headers['Authorization'] = "key=#{@api_key}"
+      faraday.headers['Authorization'] = "Bearer #{jwt_token}"
+      faraday.headers['access_token_auth']= 'true'
       extra_headers.each do |key, value|
         faraday.headers[key] = value
       end
@@ -285,7 +260,7 @@ class FCM
   end
 
   def execute_notification(body)
-    for_uri(BASE_URI) do |connection|
+    for_uri(BASE_URI_V1) do |connection|
       response = connection.post("/fcm/send", body.to_json)
       build_response(response)
     end

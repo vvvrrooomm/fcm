@@ -1,21 +1,23 @@
 require "spec_helper"
 
 describe FCM do
-  let(:send_url) { "#{FCM::BASE_URI}/fcm/send" }
+  let(:send_v1_url) { "#{FCM::BASE_URI_V1}#{project_name}/messages:send" }
+  let(:project_name) { "project_name" }
+  let(:access_token) { "access_token" }
   let(:group_notification_base_uri) { "#{FCM::GROUP_NOTIFICATION_BASE_URI}/gcm/notification" }
-  let(:api_key) { "AIzaSyB-1uEai2WiUapxCs2Q0GZYzPu7Udno5aA" }
   let(:registration_id) { "42" }
   let(:registration_ids) { ["42"] }
   let(:key_name) { "appUser-Chris" }
   let(:project_id) { "123456789" } # https://developers.google.com/cloud-messaging/gcm#senderid
   let(:notification_key) { "APA91bGHXQBB...9QgnYOEURwm0I3lmyqzk2TXQ" }
+  let(:json_key_path){ 'testrubyfcmgem-firebase-adminsdk-tnr71-445cc3194a.json'}
   let(:valid_topic) { "TopicA" }
   let(:invalid_topic) { "TopicA$" }
   let(:valid_condition) { "'TopicA' in topics && ('TopicB' in topics || 'TopicC' in topics)" }
   let(:invalid_condition) { "'TopicA' in topics and some other text ('TopicB' in topics || 'TopicC' in topics)" }
   let(:invalid_condition_topic) { "'TopicA$' in topics" }
 
-  it "should raise an error if the api key is not provided" do
+  it "should raise an error if the json_key_path and project_name are not provided" do
     expect { FCM.new }.to raise_error(ArgumentError)
   end
 
@@ -24,9 +26,6 @@ describe FCM do
   end
 
   describe "#send_v1" do
-    let(:project_name) { "project_name" }
-    let(:send_v1_url) { "#{FCM::BASE_URI_V1}#{project_name}/messages:send" }
-    let(:access_token) { "access_token" }
     let(:valid_request_v1_headers) do
       {
         "Content-Type" => "application/json",
@@ -87,7 +86,7 @@ describe FCM do
     end
 
     it 'should send notification of HTTP V1 using POST to FCM server' do
-      fcm = FCM.new(api_key, json_key_path, project_name)
+      fcm = FCM.new(json_key_path, project_name)
       fcm.send_v1(send_v1_params).should eq(
         response: 'success', body: '{}', headers: {}, status_code: 200
       )
@@ -105,12 +104,12 @@ describe FCM do
     let(:valid_request_headers) do
       {
         "Content-Type" => "application/json",
-        "Authorization" => "key=#{api_key}",
+        "Authorization" => "Bearer test_access_token",
       }
     end
 
     let(:stub_fcm_send_request) do
-      stub_request(:post, send_url).with(
+      stub_request(:post, send_v1_url).with(
         body: valid_request_body.to_json,
         headers: valid_request_headers,
       ).to_return(
@@ -122,7 +121,7 @@ describe FCM do
     end
 
     let(:stub_fcm_send_request_with_string) do
-      stub_request(:post, send_url).with(
+      stub_request(:post, send_v1_url).with(
         body: valid_request_body_with_string.to_json,
         headers: valid_request_headers,
       ).to_return(
@@ -133,7 +132,7 @@ describe FCM do
     end
 
     let(:stub_fcm_send_request_with_basic_auth) do
-      uri = URI.parse(send_url)
+      uri = URI.parse(send_v1_url)
       uri.user = "a"
       uri.password = "b"
       stub_request(:post, uri.to_s).to_return(body: "{}", headers: {}, status: 200)
@@ -143,23 +142,37 @@ describe FCM do
       stub_fcm_send_request
       stub_fcm_send_request_with_string
       stub_fcm_send_request_with_basic_auth
+      stub_request(:post, "https://www.googleapis.com/oauth2/v4/token").
+      with(
+        headers: {
+       'Accept'=>'*/*',
+       'Accept-Encoding'=>'gzip;q=1.0,deflate;q=0.6,identity;q=0.3',
+       'Content-Type'=>'application/x-www-form-urlencoded',
+       'User-Agent'=>'Faraday v2.9.0'
+        }).
+      to_return(status: 200, body: {
+        "access_token": "accesstoken",
+        "issued_token_type": "tokentype",
+        "token_type": "tokentype",
+        "expires_in": 999999999
+      }.to_json, headers: {'Content-Type'=>'application/json'})
     end
 
     it "should send notification using POST to FCM server" do
-      fcm = FCM.new(api_key)
-      fcm.send(registration_ids).should eq(response: "success", body: "{}", headers: {}, status_code: 200, canonical_ids: [], not_registered_ids: [])
+      fcm = FCM.new(json_key_path, project_id)
+      fcm.send_v1(registration_ids).should eq(response: "success", body: "{}", headers: {}, status_code: 200, canonical_ids: [], not_registered_ids: [])
       stub_fcm_send_request.should have_been_made.times(1)
     end
 
     it "should send notification using POST to FCM if id provided as string" do
-      fcm = FCM.new(api_key)
+      fcm = FCM.new(json_key_path, project_id)
       fcm.send(registration_id).should eq(response: "success", body: "{}", headers: {}, status_code: 200, canonical_ids: [], not_registered_ids: [])
       stub_fcm_send_request.should have_been_made.times(1)
     end
 
     context "send notification with data" do
       let!(:stub_with_data) do
-        stub_request(:post, send_url)
+        stub_request(:post, send_v1_url)
           .with(body: '{"registration_ids":["42"],"data":{"score":"5x1","time":"15:10"}}',
                 headers: valid_request_headers)
           .to_return(status: 200, body: "", headers: {})
@@ -167,7 +180,7 @@ describe FCM do
       before do
       end
       it "should send the data in a post request to fcm" do
-        fcm = FCM.new(api_key)
+        fcm = FCM.new(json_key_path, project_id)
         fcm.send(registration_ids, data: { score: "5x1", time: "15:10" })
         stub_with_data.should have_been_requested
       end
@@ -175,13 +188,13 @@ describe FCM do
 
     context "sending notification to a topic" do
       let!(:stub_with_valid_topic) do
-        stub_request(:post, send_url)
+        stub_request(:post, send_v1_url)
           .with(body: '{"to":"/topics/TopicA","data":{"score":"5x1","time":"15:10"}}',
                 headers: valid_request_headers)
           .to_return(status: 200, body: "", headers: {})
       end
       let!(:stub_with_invalid_topic) do
-        stub_request(:post, send_url)
+        stub_request(:post, send_v1_url)
           .with(body: '{"condition":"/topics/TopicA$","data":{"score":"5x1","time":"15:10"}}',
                 headers: valid_request_headers)
           .to_return(status: 200, body: "", headers: {})
@@ -189,13 +202,13 @@ describe FCM do
 
       describe "#send_to_topic" do
         it "should send the data in a post request to fcm" do
-          fcm = FCM.new(api_key)
+          fcm = FCM.new(json_key_path, project_id)
           fcm.send_to_topic(valid_topic, data: { score: "5x1", time: "15:10" })
           stub_with_valid_topic.should have_been_requested
         end
 
         it "should not send to invalid topics" do
-          fcm = FCM.new(api_key)
+          fcm = FCM.new(json_key_path, project_id)
           fcm.send_to_topic(invalid_topic, data: { score: "5x1", time: "15:10" })
           stub_with_invalid_topic.should_not have_been_requested
         end
@@ -204,19 +217,19 @@ describe FCM do
 
     context "sending notification to a topic condition" do
       let!(:stub_with_valid_condition) do
-        stub_request(:post, send_url)
+        stub_request(:post, send_v1_url)
           .with(body: '{"condition":"\'TopicA\' in topics && (\'TopicB\' in topics || \'TopicC\' in topics)","data":{"score":"5x1","time":"15:10"}}',
                 headers: valid_request_headers)
           .to_return(status: 200, body: "", headers: {})
       end
       let!(:stub_with_invalid_condition) do
-        stub_request(:post, send_url)
+        stub_request(:post, send_v1_url)
           .with(body: '{"condition":"\'TopicA\' in topics and some other text (\'TopicB\' in topics || \'TopicC\' in topics)","data":{"score":"5x1","time":"15:10"}}',
                 headers: valid_request_headers)
           .to_return(status: 200, body: "", headers: {})
       end
       let!(:stub_with_invalid_condition_topic) do
-        stub_request(:post, send_url)
+        stub_request(:post, send_v1_url)
           .with(body: '{"condition":"\'TopicA$\' in topics","data":{"score":"5x1","time":"15:10"}}',
                 headers: valid_request_headers)
           .to_return(status: 200, body: "", headers: {})
@@ -224,19 +237,19 @@ describe FCM do
 
       describe "#send_to_topic_condition" do
         it "should send the data in a post request to fcm" do
-          fcm = FCM.new(api_key)
+          fcm = FCM.new(json_key_path, project_id)
           fcm.send_to_topic_condition(valid_condition, data: { score: "5x1", time: "15:10" })
           stub_with_valid_condition.should have_been_requested
         end
 
         it "should not send to invalid conditions" do
-          fcm = FCM.new(api_key)
+          fcm = FCM.new(json_key_path, project_id)
           fcm.send_to_topic_condition(invalid_condition, data: { score: "5x1", time: "15:10" })
           stub_with_invalid_condition.should_not have_been_requested
         end
 
         it "should not send to invalid topics in a condition" do
-          fcm = FCM.new(api_key)
+          fcm = FCM.new(json_key_path, project_id)
           fcm.send_to_topic_condition(invalid_condition_topic, data: { score: "5x1", time: "15:10" })
           stub_with_invalid_condition_topic.should_not have_been_requested
         end
@@ -251,11 +264,11 @@ describe FCM do
         }
       end
 
-      subject { FCM.new(api_key) }
+      subject { FCM.new(json_key_path, project_id) }
 
       context "on failure code 400" do
         before do
-          stub_request(:post, send_url).with(
+          stub_request(:post, send_v1_url).with(
             mock_request_attributes
           ).to_return(
             # ref: https://firebase.google.com/docs/cloud-messaging/http-server-ref#interpret-downstream
@@ -274,7 +287,7 @@ describe FCM do
 
       context "on failure code 401" do
         before do
-          stub_request(:post, send_url).with(
+          stub_request(:post, send_v1_url).with(
             mock_request_attributes
           ).to_return(
             # ref: https://firebase.google.com/docs/cloud-messaging/http-server-ref#interpret-downstream
@@ -294,7 +307,7 @@ describe FCM do
 
       context "on failure code 503" do
         before do
-          stub_request(:post, send_url).with(
+          stub_request(:post, send_v1_url).with(
             mock_request_attributes
           ).to_return(
             # ref: https://firebase.google.com/docs/cloud-messaging/http-server-ref#interpret-downstream
@@ -314,7 +327,7 @@ describe FCM do
 
       context "on failure code 5xx" do
         before do
-          stub_request(:post, send_url).with(
+          stub_request(:post, send_v1_url).with(
             mock_request_attributes
           ).to_return(
             # ref: https://firebase.google.com/docs/cloud-messaging/http-server-ref#interpret-downstream
@@ -347,10 +360,10 @@ describe FCM do
         }
       end
 
-      subject { FCM.new(api_key) }
+      subject { FCM.new(json_key_path, project_id) }
 
       before do
-        stub_request(:post, send_url).with(
+        stub_request(:post, send_v1_url).with(
           mock_request_attributes
         ).to_return(
           # ref: https://firebase.google.com/docs/cloud-messaging/http-server-ref#interpret-downstream
@@ -373,7 +386,7 @@ describe FCM do
     end
 
     context "when send_notification responds with NotRegistered" do
-      subject { FCM.new(api_key) }
+      subject { FCM.new(json_key_path, project_id) }
 
       let(:mock_request_attributes) do
         {
@@ -389,7 +402,7 @@ describe FCM do
       end
 
       before do
-        stub_request(:post, send_url).with(
+        stub_request(:post, send_v1_url).with(
           mock_request_attributes
         ).to_return(
           body: valid_response_body_with_not_registered_ids.to_json,
@@ -416,7 +429,7 @@ describe FCM do
     # TODO: refactor to should_behave_like
     let(:valid_request_headers) do
       {
-        "Authorization" => "key=#{api_key}",
+        "Authorization" => "Bearer #{jwt_token}",
         "Content-Type" => "application/json",
         "Project-Id" => project_id,
       }
@@ -433,7 +446,7 @@ describe FCM do
       }
     end
 
-    subject { FCM.new(api_key) }
+    subject { FCM.new(json_key_path, project_id) }
 
     # ref: https://firebase.google.com/docs/cloud-messaging/notifications#managing-device-groups-on-the-app-server
     context "create" do
@@ -555,7 +568,7 @@ describe FCM do
         },
         query: { notification_key_name: "TEST_KEY_NAME" },
       )
-      client = FCM.new("TEST_SERVER_KEY")
+      client = FCM.new(json_key_path, project_id)
 
       client.recover_notification_key("TEST_KEY_NAME", "TEST_PROJECT_ID")
 
@@ -571,7 +584,7 @@ describe FCM do
     subject(:get_info) { client.get_instance_id_info(registration_id, options) }
 
     let(:options) { nil }
-    let(:client) { FCM.new('TEST_SERVER_KEY') }
+    let(:client) { FCM.new(json_key_path, project_id) }
     let(:base_uri) { "#{FCM::INSTANCE_ID_API}/iid/info" }
     let(:uri) { "#{base_uri}/#{registration_id}" }
     let(:mock_request_attributes) do
@@ -603,12 +616,12 @@ describe FCM do
 
   describe "credentials path" do
     it "can be a path to a file" do
-      fcm = FCM.new("test", "README.md")
+      fcm = FCM.new("README.md", "project_name")
       expect(fcm.__send__(:json_key).class).to eq(File)
     end
 
     it "can be an IO object" do
-      fcm = FCM.new("test", StringIO.new("hey"))
+      fcm = FCM.new(StringIO.new("hey"), "project_name")
       expect(fcm.__send__(:json_key).class).to eq(StringIO)
     end
   end

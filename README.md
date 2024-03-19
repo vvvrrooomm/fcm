@@ -23,11 +23,11 @@ A version of supported Ruby, currently:
 `ruby >= 2.4`
 
 ## Getting Started
-To use this gem, you need to instantiate a client with your firebase credentials:
+To use this gem, you need to instantiate a client with your firebase credentials, this fork dropped the legacy
+API_KEY authentication. A credentials.json, obtained from FCM console (Project Settings->Service Accounts->Generate New Private Key) is always needed and passed via GOOGLE_APPLICATION_CREDENTIALS_PATH:
 
 ```ruby
 fcm = FCM.new(
-  API_TOKEN,
   GOOGLE_APPLICATION_CREDENTIALS_PATH,
   FIREBASE_PROJECT_ID
 )
@@ -40,7 +40,6 @@ The easiest way to provide them is to pass here an absolute path to a file with 
 
 ```ruby
 fcm = FCM.new(
-  API_TOKEN,
   '/path/to/credentials.json',
   FIREBASE_PROJECT_ID
 )
@@ -50,7 +49,6 @@ As per their secret nature, you might not want to have them in your repository. 
 
 ```ruby
 fcm = FCM.new(
-  API_TOKEN,
   StringIO.new(ENV.fetch('FIREBASE_CREDENTIALS')),
   FIREBASE_PROJECT_ID
 )
@@ -62,6 +60,7 @@ fcm = FCM.new(
 ## HTTP v1 API
 
 To migrate to HTTP v1 see: https://firebase.google.com/docs/cloud-messaging/migrate-v1
+**This might be half-done only**
 
 ```ruby
 fcm = FCM.new(
@@ -98,30 +97,6 @@ message = {
 }
 
 fcm.send_v1(message)
-```
-
-## HTTP Legacy Version
-
-To migrate to HTTP v1 see: https://firebase.google.com/docs/cloud-messaging/migrate-v1
-
-For your server to send a message to one or more devices, you must first initialise a new `FCM` class with your Firebase Cloud Messaging server key, and then call the `send` method on this and give it 1 or more (up to 1000) registration tokens as an array of strings. You can also optionally send further [HTTP message parameters](https://firebase.google.com/docs/cloud-messaging/http-server-ref) like `data` or `time_to_live` etc. as a hash via the second optional argument to `send`.
-
-Example sending notifications:
-
-```ruby
-require 'fcm'
-
-fcm = FCM.new("my_server_key")
-
-registration_ids= ["12", "13"] # an array of one or more client registration tokens
-
-# See https://firebase.google.com/docs/cloud-messaging/http-server-ref for all available options.
-options = { "notification": {
-              "title": "Portugal vs. Denmark",
-              "body": "5 to 1"
-          }
-}
-response = fcm.send(registration_ids, options)
 ```
 
 Currently `response` is just a hash containing the response `body`, `headers` and `status_code`. Check [here](https://firebase.google.com/docs/cloud-messaging/server#response) to see how to interpret the responses.

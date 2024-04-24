@@ -6,9 +6,9 @@ require "googleauth"
 class FCM
   BASE_URI_V1 = "https://iid.googleapis.com/v1/projects/"
   DEFAULT_TIMEOUT = 30
-
-  GROUP_NOTIFICATION_BASE_URI = "https://android.googleapis.com"
-  INSTANCE_ID_API = "https://iid.googleapis.com"
+  MESSAGE_URI_V1 = 'https://fcm.googleapis.com/v1/projects/'
+  GROUP_NOTIFICATION_BASE_URI = 'https://android.googleapis.com'
+  INSTANCE_ID_API = 'https://iid.googleapis.com'
   TOPIC_REGEX = /[a-zA-Z0-9\-_.~%]+/
 
   def initialize(json_key_path, project_name, client_options = {})
@@ -48,9 +48,9 @@ class FCM
   def send_notification_v1(message)
     return if @project_name.empty?
 
-    post_body = { 'message': message }
+    post_body = { message: }
 
-    for_uri(BASE_URI_V1) do |connection|
+    for_uri(MESSAGE_URI_V1) do |connection|
       response = connection.post(
         "#{@project_name}/messages:send", post_body.to_json
       )
@@ -60,6 +60,16 @@ class FCM
 
   alias send_v1 send_notification_v1
 
+  def send_group_message(message, token, project_id)
+    post_body = { message: { data: { martins_message: "hello Android#{message}" }, topic: token, fcm_options: {
+      analytics_label: 'Label'
+    } } }
+
+    for_uri("https://fcm.googleapis.com/v1/projects/#{project_id}/messages:send") do |connection|
+      response = connection.post('', post_body.to_json)
+      build_response(response)
+    end
+  end
 
   def create_notification_key(key_name, project_id, registration_ids = [])
     post_body = build_post_body(registration_ids, operation: "create",
@@ -194,10 +204,13 @@ class FCM
   private
 
   def for_uri(uri, extra_headers = {})
+    logger = Logger.new(STDOUT)
+    logger.level = Logger::WARN
     connection = ::Faraday.new(
       url: uri,
       request: { timeout: DEFAULT_TIMEOUT }
     ) do |faraday|
+      faraday.response :logger, logger
       faraday.adapter Faraday.default_adapter
       faraday.headers["Content-Type"] = "application/json"
       faraday.headers['Authorization'] = "Bearer #{jwt_token}"
